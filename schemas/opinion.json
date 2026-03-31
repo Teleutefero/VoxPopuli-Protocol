@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VoxPopuli Opinion Point",
+  "description": "Struttura dati per un'opinione anonima verificabile",
+  "type": "object",
+  "properties": {
+    "topic_id": { "type": "string", "description": "ID univoco dell'argomento (es: immunità-parlamentare)" },
+    "timestamp_bucket": { "type": "integer", "description": "Giorno dell'invio (non l'ora esatta per evitare correlazione)" },
+    "country_code": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "sentiment_matrix": {
+      "type": "object",
+      "properties": {
+        "accordo": { "type": "integer", "minimum": -2, "maximum": 2 },
+        "urgenza": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "fiducia_istituzioni": { "type": "integer", "minimum": 0, "maximum": 5 }
+      },
+      "required": ["accordo", "urgenza"]
+    },
+    "zkp_proof": { "type": "string", "description": "La prova Zero-Knowledge che valida l'utente" },
+    "merkle_root_reference": { "type": "string", "description": "Hash della root del periodo precedente per coerenza" }
+  },
+  "required": ["topic_id", "country_code", "sentiment_matrix", "zkp_proof"]
+}
