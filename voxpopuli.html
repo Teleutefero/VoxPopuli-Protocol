@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoxPopuli — La Voce del Mondo</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+:root{--bg:#0a0c10;--surface:#111418;--surface2:#181c22;--border:#1f2530;--accent:#e8c547;--accent2:#4ecdc4;--accent3:#ff6b6b;--text:#e8e8e0;--text-muted:#8a8f9a;--text-dim:#4a5060;--green:#4ade80;--radius:4px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.3;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")}
+
+.ad-top{width:100%;background:#0d0f13;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:8px 16px;min-height:60px}
+.ad-slot{width:728px;max-width:100%;height:50px;border:1px dashed var(--text-dim);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;background:repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(255,255,255,.01) 8px,rgba(255,255,255,.01) 16px);cursor:pointer;transition:border-color .2s}
+.ad-slot:hover{border-color:var(--text-muted);color:var(--text-muted)}
+
+header{border-bottom:1px solid var(--border);padding:0 32px;display:flex;align-items:center;justify-content:space-between;height:64px;position:sticky;top:0;z-index:200;background:rgba(10,12,16,.96);backdrop-filter:blur(12px)}
+.logo-main{font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:var(--accent);letter-spacing:-.02em}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:.15em;text-transform:uppercase;margin-left:10px}
+.hstats{display:flex;gap:20px;align-items:center}
+.stat-pill{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px}
+.dot-live{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+.live-badge{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--bg);background:var(--green);padding:3px 8px;border-radius:2px;letter-spacing:.1em}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.map-section{padding:24px 32px 0;max-width:1400px;margin:0 auto}
+.map-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.map-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.map-title{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:.15em;text-transform:uppercase}
+.map-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ctrl-btn{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:5px 12px;border:1px solid var(--border);border-radius:2px;background:var(--surface2);color:var(--text-muted);cursor:pointer;transition:all .15s;letter-spacing:.06em}
+.ctrl-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+.ctrl-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(232,197,71,.08)}
+.map-hint{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);padding:6px 20px 8px}
+#mapContainer{width:100%;background:var(--bg)}
+#mapSvg{width:100%;display:block;cursor:grab}
+#mapSvg:active{cursor:grabbing}
+.country-path{fill:#1a2030;stroke:#0a0c10;stroke-width:.5;transition:fill .15s;cursor:pointer}
+.country-path:hover{fill:#2a3550}
+.country-path.selected{fill:var(--accent);stroke:var(--bg);stroke-width:.8}
+.country-path.known{fill:#1e2840}
+#mapTooltip{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:7px 13px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text);pointer-events:none;z-index:500;opacity:0;transition:opacity .15s;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.5)}
+
+.selected-bar{padding:10px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:44px;background:var(--surface2)}
+.sel-label{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:.1em;white-space:nowrap;text-transform:uppercase}
+.chips{display:flex;gap:5px;flex-wrap:wrap;flex:1}
+.chip{display:inline-flex;align-items:center;gap:4px;background:rgba(232,197,71,.1);border:1px solid rgba(232,197,71,.3);border-radius:2px;padding:3px 8px;font-size:11px;color:var(--accent);font-family:'IBM Plex Mono',monospace;cursor:pointer;transition:all .15s}
+.chip:hover{background:rgba(255,107,107,.15);border-color:var(--accent3);color:var(--accent3)}
+.no-sel{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);font-style:italic}
+
+.main-grid{max-width:1400px;margin:0 auto;padding:20px 32px 48px;display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
+.sidebar{position:sticky;top:80px;display:flex;flex-direction:column;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.panel-header{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.panel-title{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:.15em;text-transform:uppercase}
+.panel-body{padding:16px}
+.ai-label{display:inline-flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--accent2);border:1px solid rgba(78,205,196,.3);padding:2px 6px;border-radius:2px;letter-spacing:.06em}
+.ai-dot{width:5px;height:5px;border-radius:50%;background:var(--accent2);animation:pulse 2s infinite}
+.topic-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:14px;outline:none;transition:border-color .2s;resize:none}
+.topic-input:focus{border-color:var(--accent2)}
+.topic-input::placeholder{color:var(--text-dim)}
+.btn{width:100%;padding:12px 18px;background:var(--accent);color:var(--bg);border:none;border-radius:var(--radius);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.1em;cursor:pointer;transition:all .2s;text-transform:uppercase;margin-top:10px}
+.btn:hover{background:#f0d060;transform:translateY(-1px)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn.secondary{background:transparent;color:var(--accent2);border:1px solid var(--accent2);margin-top:6px}
+.btn.secondary:hover{background:rgba(78,205,196,.1)}
+.trend-list{display:flex;flex-direction:column;gap:5px}
+.trend-item{display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all .15s}
+.trend-item:hover{border-color:var(--accent2)}
+.trend-num{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);min-width:16px}
+.trend-text{font-size:12px;color:var(--text);flex:1}
+
+.content-area{display:flex;flex-direction:column;gap:18px}
+.results-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;animation:slideIn .3s ease}
+@keyframes slideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.results-header{padding:20px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.results-topic{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;line-height:1.2}
+.results-meta{display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+.meta-badge{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);padding:3px 8px;border-radius:2px}
+.opinion-list{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.op-item{animation:fadeUp .4s ease forwards;opacity:0}
+@keyframes fadeUp{to{opacity:1;transform:translateY(0)}from{opacity:0;transform:translateY(6px)}}
+.op-item:nth-child(1){animation-delay:.04s}.op-item:nth-child(2){animation-delay:.09s}.op-item:nth-child(3){animation-delay:.14s}.op-item:nth-child(4){animation-delay:.19s}.op-item:nth-child(5){animation-delay:.24s}
+.op-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:7px}
+.op-text{font-size:13px;line-height:1.55;color:var(--text);flex:1}
+.op-pct{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:500;flex-shrink:0}
+.bar-wrap{background:var(--surface2);border-radius:2px;height:5px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width 1s cubic-bezier(.4,0,.2,1);width:0%}
+.op-foot{display:flex;gap:10px;margin-top:5px;align-items:center}
+.op-tag{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase}
+.c0{color:var(--accent)}.c1{color:var(--accent2)}.c2{color:var(--accent3)}.c3{color:#a78bfa}.c4{color:#fb923c}.c5{color:#34d399}
+.b0{background:var(--accent)}.b1{background:var(--accent2)}.b2{background:var(--accent3)}.b3{background:#a78bfa}.b4{background:#fb923c}.b5{background:#34d399}
+.consensus-wrap{padding:16px 22px;border-bottom:1px solid var(--border)}
+.consensus-label{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;display:flex;justify-content:space-between}
+.ctrack{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;display:flex;gap:2px}
+.cseg{height:100%;border-radius:2px;transition:width 1.2s ease}
+.clegend{display:flex;gap:12px;margin-top:7px;flex-wrap:wrap}
+.leg-item{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted)}
+.leg-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.tabs{display:flex;border-bottom:1px solid var(--border);padding:0 22px}
+.tab{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;padding:12px 14px;color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;text-transform:uppercase;background:none;border-top:none;border-left:none;border-right:none}
+.tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{display:none}.tab-content.active{display:block}
+.ccomp{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;padding:20px 22px}
+.ccard{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:13px}
+.ccard-h{display:flex;align-items:center;gap:7px;margin-bottom:11px}
+.ccard-flag{font-size:17px}.ccard-name{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.ccrow{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.cclab{font-size:10px;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ccpct{font-family:'IBM Plex Mono',monospace;font-size:10px;min-width:30px;text-align:right}
+.cctrack{width:44px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.ccbar{height:100%;border-radius:2px;transition:width 1s ease}
+.cctop{margin-top:8px;font-size:10px;color:var(--text-dim);line-height:1.4;font-style:italic}
+.write-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px}
+.write-h{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.write-icon{width:30px;height:30px;background:rgba(232,197,71,.1);border:1px solid rgba(232,197,71,.25);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:14px}
+.write-title{font-family:'Playfair Display',serif;font-size:17px;font-weight:700}
+.write-sub{font-size:11px;color:var(--text-muted);margin-top:1px}
+.write-area{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.6;resize:vertical;min-height:90px;outline:none;transition:border-color .2s;margin-bottom:10px}
+.write-area:focus{border-color:var(--accent)}.write-area::placeholder{color:var(--text-dim)}
+.write-foot{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.write-note{font-size:10px;color:var(--text-dim);line-height:1.5;font-family:'IBM Plex Mono',monospace}
+.btn-sub{padding:11px 22px;background:var(--accent);color:var(--bg);border:none;border-radius:var(--radius);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.1em;cursor:pointer;transition:all .2s;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.btn-sub:hover{background:#f0d060}.btn-sub:disabled{opacity:.5;cursor:not-allowed}
+.loading-wrap{padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.ld{display:flex;gap:5px}
+.ld span{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:blink 1.2s infinite}
+.ld span:nth-child(2){animation-delay:.2s}.ld span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.15;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+.loading-text{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-muted);letter-spacing:.08em}
+.empty-state{padding:56px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.empty-globe{font-size:44px;opacity:.4}
+.empty-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--text);margin-top:6px}
+.empty-desc{font-size:13px;color:var(--text-muted);max-width:320px;line-height:1.6}
+.toast{position:fixed;bottom:22px;right:22px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--green);padding:13px 18px;border-radius:var(--radius);font-size:13px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:1000;animation:toastIn .3s ease;max-width:300px}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.ad-bottom{max-width:1400px;margin:0 auto 24px;padding:0 32px}
+.ad-slot-b{width:100%;height:90px;border:1px dashed var(--text-dim);border-radius:var(--radius);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;background:repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(255,255,255,.01) 8px,rgba(255,255,255,.01) 16px);cursor:pointer;transition:all .2s}
+.ad-slot-b:hover{border-color:var(--text-muted);color:var(--text-muted)}
+.ad-size{font-size:9px;opacity:.5}
+footer{border-top:1px solid var(--border);padding:20px 32px;display:flex;align-items:center;justify-content:space-between;max-width:1400px;margin:0 auto;flex-wrap:wrap;gap:10px}
+.footer-logo{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--accent)}
+.footer-links{display:flex;gap:18px}
+.footer-links a{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);text-decoration:none;transition:color .2s}
+.footer-links a:hover{color:var(--text-muted)}
+.footer-copy{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-dim)}
+::selection{background:rgba(232,197,71,.2)}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+@media(max-width:900px){.map-section,.main-grid,.ad-bottom{padding-left:16px;padding-right:16px}.main-grid{grid-template-columns:1fr}.sidebar{position:static}header{padding:0 16px}.hstats{display:none}}
+</style>
+</head>
+<body>
+
+<div class="ad-top">
+  <div class="ad-slot" onclick="alert('Spazio pubblicitario — ads@voxpopuli.world')">[ SPAZIO PUBBLICITARIO — 728×90 LEADERBOARD ]</div>
+</div>
+
+<header>
+  <div><span class="logo-main">VoxPopuli</span><span class="logo-sub">La Voce del Mondo</span></div>
+  <div class="hstats">
+    <div class="stat-pill"><span class="dot-live"></span>2.847 opinioni oggi</div>
+    <div class="stat-pill">194 paesi attivi</div>
+    <span class="live-badge">LIVE</span>
+  </div>
+</header>
+
+<section class="map-section">
+  <div class="map-panel">
+    <div class="map-header">
+      <span class="map-title">🌍 Seleziona Paesi — Clicca sulla Mappa</span>
+      <div class="map-controls">
+        <button class="ctrl-btn active" id="btnFlat" onclick="setView('flat')">◫ MAPPA</button>
+        <button class="ctrl-btn" id="btnGlobe" onclick="setView('globe')">◎ GLOBO</button>
+        <button class="ctrl-btn" onclick="clearSelection()">✕ DESELEZIONA</button>
+        <button class="ctrl-btn" onclick="selectAll()" style="border-color:rgba(232,197,71,.4);color:var(--accent)">◈ TUTTI</button>
+      </div>
+    </div>
+    <div id="mapContainer"><svg id="mapSvg"></svg></div>
+    <div class="map-hint" id="mapHint">Clicca su un paese per selezionarlo · Trascina per muovere · Scroll per zoom</div>
+    <div class="selected-bar">
+      <span class="sel-label">Selezionati:</span>
+      <div class="chips" id="chips"><span class="no-sel">Nessun paese — clicca sulla mappa</span></div>
+    </div>
+  </div>
+</section>
+
+<div id="mapTooltip"></div>
+
+<div class="main-grid">
+  <aside class="sidebar">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">🔍 Argomento</span>
+        <span class="ai-label"><span class="ai-dot"></span>IA</span>
+      </div>
+      <div class="panel-body">
+        <textarea class="topic-input" id="topicInput" rows="3" placeholder="Es: immigrazione, pensioni, energia nucleare, aborto, lavoro..."></textarea>
+        <button class="btn" id="analyzeBtn" onclick="analyzeOpinions()">⚡ ANALIZZA OPINIONI</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">🔥 Argomenti Caldi</span></div>
+      <div class="panel-body" style="padding:10px;"><div class="trend-list" id="trendList"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-body">
+        <div style="border-left:2px solid var(--accent);padding-left:13px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted);line-height:1.9">
+            <div>→ I media non parlano per te</div>
+            <div>→ Ogni opinione ha lo stesso peso</div>
+            <div>→ I fuori sede contano quanto tutti</div>
+            <div>→ Nessun algoritmo favorisce un lato</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <main class="content-area">
+    <div class="panel" id="resultsPanel">
+      <div id="resultsContent">
+        <div class="empty-state">
+          <div class="empty-globe">🌐</div>
+          <div class="empty-title">Pronto ad ascoltare il mondo</div>
+          <div class="empty-desc">Seleziona uno o più paesi dalla mappa, inserisci un argomento e scopri cosa pensa davvero la gente.</div>
+        </div>
+      </div>
+    </div>
+    <div class="write-panel" id="writePanel" style="display:none">
+      <div class="write-h">
+        <div class="write-icon">✍️</div>
+        <div><div class="write-title">Aggiungi la tua Opinione</div><div class="write-sub">Analizzata dall'IA e aggiunta al conteggio</div></div>
+      </div>
+      <textarea class="write-area" id="userOpinion" placeholder="Scrivi cosa pensi su questo argomento..."></textarea>
+      <div class="write-foot">
+        <div class="write-note">Anonimo · Non tracciato · Solo il contenuto viene analizzato</div>
+        <button class="btn-sub" id="submitBtn" onclick="submitOpinion()">INVIA →</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="ad-bottom">
+  <div class="ad-slot-b" onclick="alert('Spazio pubblicitario — ads@voxpopuli.world')">
+    <span>[ SPAZIO PUBBLICITARIO — 970×90 BILLBOARD ]</span>
+    <span class="ad-size">Formati: 300×250 · 728×90 · 320×50 · 970×250</span>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-logo">VoxPopuli</div>
+  <div class="footer-links">
+    <a href="#">Come funziona</a><a href="#">Privacy</a><a href="#">Metodologia IA</a><a href="#">API ricercatori</a><a href="#">Contatti</a>
+  </div>
+  <div class="footer-copy">© 2025 VoxPopuli</div>
+</footer>
+
+<script>
+// ─── COUNTRY DATA (ISO numeric → info) ───
+const KNOWN = {
+  4:{c:'AF',n:'Afghanistan',f:'🇦🇫'},12:{c:'DZ',n:'Algeria',f:'🇩🇿'},32:{c:'AR',n:'Argentina',f:'🇦🇷'},36:{c:'AU',n:'Australia',f:'🇦🇺'},40:{c:'AT',n:'Austria',f:'🇦🇹'},
+  50:{c:'BD',n:'Bangladesh',f:'🇧🇩'},56:{c:'BE',n:'Belgio',f:'🇧🇪'},68:{c:'BO',n:'Bolivia',f:'🇧🇴'},76:{c:'BR',n:'Brasile',f:'🇧🇷'},100:{c:'BG',n:'Bulgaria',f:'🇧🇬'},
+  116:{c:'KH',n:'Cambogia',f:'🇰🇭'},124:{c:'CA',n:'Canada',f:'🇨🇦'},144:{c:'LK',n:'Sri Lanka',f:'🇱🇰'},152:{c:'CL',n:'Cile',f:'🇨🇱'},156:{c:'CN',n:'Cina',f:'🇨🇳'},
+  170:{c:'CO',n:'Colombia',f:'🇨🇴'},191:{c:'HR',n:'Croazia',f:'🇭🇷'},203:{c:'CZ',n:'Rep. Ceca',f:'🇨🇿'},208:{c:'DK',n:'Danimarca',f:'🇩🇰'},214:{c:'DO',n:'Rep. Dominicana',f:'🇩🇴'},
+  218:{c:'EC',n:'Ecuador',f:'🇪🇨'},818:{c:'EG',n:'Egitto',f:'🇪🇬'},246:{c:'FI',n:'Finlandia',f:'🇫🇮'},250:{c:'FR',n:'Francia',f:'🇫🇷'},276:{c:'DE',n:'Germania',f:'🇩🇪'},
+  288:{c:'GH',n:'Ghana',f:'🇬🇭'},300:{c:'GR',n:'Grecia',f:'🇬🇷'},320:{c:'GT',n:'Guatemala',f:'🇬🇹'},340:{c:'HN',n:'Honduras',f:'🇭🇳'},348:{c:'HU',n:'Ungheria',f:'🇭🇺'},
+  356:{c:'IN',n:'India',f:'🇮🇳'},360:{c:'ID',n:'Indonesia',f:'🇮🇩'},364:{c:'IR',n:'Iran',f:'🇮🇷'},368:{c:'IQ',n:'Iraq',f:'🇮🇶'},372:{c:'IE',n:'Irlanda',f:'🇮🇪'},
+  376:{c:'IL',n:'Israele',f:'🇮🇱'},380:{c:'IT',n:'Italia',f:'🇮🇹'},392:{c:'JP',n:'Giappone',f:'🇯🇵'},400:{c:'JO',n:'Giordania',f:'🇯🇴'},404:{c:'KE',n:'Kenya',f:'🇰🇪'},
+  410:{c:'KR',n:'Corea del Sud',f:'🇰🇷'},422:{c:'LB',n:'Libano',f:'🇱🇧'},458:{c:'MY',n:'Malaysia',f:'🇲🇾'},484:{c:'MX',n:'Messico',f:'🇲🇽'},504:{c:'MA',n:'Marocco',f:'🇲🇦'},
+  528:{c:'NL',n:'Paesi Bassi',f:'🇳🇱'},554:{c:'NZ',n:'Nuova Zelanda',f:'🇳🇿'},566:{c:'NG',n:'Nigeria',f:'🇳🇬'},578:{c:'NO',n:'Norvegia',f:'🇳🇴'},586:{c:'PK',n:'Pakistan',f:'🇵🇰'},
+  600:{c:'PY',n:'Paraguay',f:'🇵🇾'},604:{c:'PE',n:'Perù',f:'🇵🇪'},608:{c:'PH',n:'Filippine',f:'🇵🇭'},616:{c:'PL',n:'Polonia',f:'🇵🇱'},620:{c:'PT',n:'Portogallo',f:'🇵🇹'},
+  642:{c:'RO',n:'Romania',f:'🇷🇴'},643:{c:'RU',n:'Russia',f:'🇷🇺'},682:{c:'SA',n:'Arabia Saudita',f:'🇸🇦'},703:{c:'SK',n:'Slovacchia',f:'🇸🇰'},724:{c:'ES',n:'Spagna',f:'🇪🇸'},
+  752:{c:'SE',n:'Svezia',f:'🇸🇪'},756:{c:'CH',n:'Svizzera',f:'🇨🇭'},760:{c:'SY',n:'Siria',f:'🇸🇾'},764:{c:'TH',n:'Thailandia',f:'🇹🇭'},788:{c:'TN',n:'Tunisia',f:'🇹🇳'},
+  792:{c:'TR',n:'Turchia',f:'🇹🇷'},800:{c:'UG',n:'Uganda',f:'🇺🇬'},804:{c:'UA',n:'Ucraina',f:'🇺🇦'},826:{c:'GB',n:'UK',f:'🇬🇧'},834:{c:'TZ',n:'Tanzania',f:'🇹🇿'},
+  840:{c:'US',n:'USA',f:'🇺🇸'},858:{c:'UY',n:'Uruguay',f:'🇺🇾'},704:{c:'VN',n:'Vietnam',f:'🇻🇳'},887:{c:'YE',n:'Yemen',f:'🇾🇪'},716:{c:'ZW',n:'Zimbabwe',f:'🇿🇼'},
+  710:{c:'ZA',n:'Sudafrica',f:'🇿🇦'}
+};
+
+const TRENDING=[
+  {t:'Cambiamento climatico',h:'🔥🔥🔥'},{t:'Immigrazione',h:'🔥🔥🔥'},{t:'Intelligenza artificiale',h:'🔥🔥'},
+  {t:'Costo della vita',h:'🔥🔥🔥'},{t:'Pensioni e lavoro',h:'🔥🔥'},{t:'Energia nucleare',h:'🔥🔥'}
+];
+
+let selected=new Set();
+let currentTopic='';
+let viewMode='flat';
+let geoData=null;
+
+// ─── MAP ───
+const mapEl=document.getElementById('mapSvg');
+function getW(){return mapEl.parentElement.offsetWidth}
+function getH(w){return Math.min(w*0.46,440)}
+
+async function initMap(){
+  try{
+    const world=await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    geoData=topojson.feature(world,world.objects.countries);
+    drawMap();
+  }catch(e){
+    document.getElementById('mapContainer').innerHTML=`<div style="padding:32px;text-align:center;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;font-size:12px;">⚠ Mappa non disponibile offline</div>`;
+    buildFallback();
+  }
+}
+
+function setView(mode){
+  viewMode=mode;
+  document.getElementById('btnFlat').classList.toggle('active',mode==='flat');
+  document.getElementById('btnGlobe').classList.toggle('active',mode==='globe');
+  document.getElementById('mapHint').textContent=mode==='globe'?'Clicca per selezionare · Trascina per ruotare il globo':'Clicca per selezionare · Trascina per muovere · Scroll per zoom';
+  if(geoData)drawMap();
+}
+
+function drawMap(){
+  const W=getW(),H=getH(W);
+  const svg=d3.select('#mapSvg');
+  svg.selectAll('*').remove();
+  svg.attr('viewBox',`0 0 ${W} ${H}`);
+  if(viewMode==='globe')drawGlobe(svg,W,H);
+  else drawFlat(svg,W,H);
+}
+
+function countryClass(d){
+  const k=KNOWN[+d.id];
+  if(!k) return 'country-path';
+  return 'country-path known'+(selected.has(k.c)?' selected':'');
+}
+
+function drawFlat(svg,W,H){
+  const proj=d3.geoNaturalEarth1().scale(W/6.3).translate([W/2,H/2]);
+  const path=d3.geoPath().projection(proj);
+  // graticule
+  svg.append('path').datum(d3.geoGraticule()()).attr('d',path).attr('fill','none').attr('stroke','#131a25').attr('stroke-width','.35');
+  svg.append('path').datum({type:'Sphere'}).attr('d',path).attr('fill','none').attr('stroke','#1a2535').attr('stroke-width','1');
+  const g=svg.append('g');
+  const paths=g.selectAll('path').data(geoData.features).join('path')
+    .attr('class',d=>countryClass(d)).attr('d',path)
+    .on('mouseover',(e,d)=>showTip(e,d)).on('mousemove',moveTip).on('mouseleave',hideTip)
+    .on('click',(e,d)=>onCountryClick(d,paths));
+  const zoom=d3.zoom().scaleExtent([.6,8]).on('zoom',e=>g.attr('transform',e.transform));
+  svg.call(zoom);
+}
+
+function drawGlobe(svg,W,H){
+  let rot=[-15,-20],drag=false,startP;
+  const scale=Math.min(W,H)*.44;
+  const proj=d3.geoOrthographic().scale(scale).translate([W/2,H/2]).rotate(rot).clipAngle(90);
+  const path=d3.geoPath().projection(proj);
+  const cx=W/2,cy=H/2,r=scale;
+  // atmosphere
+  const defs=svg.append('defs');
+  const rg=defs.append('radialGradient').attr('id','atmo').attr('cx','50%').attr('cy','50%').attr('r','50%');
+  rg.append('stop').attr('offset','85%').attr('stop-color','transparent');
+  rg.append('stop').attr('offset','100%').attr('stop-color','rgba(78,205,196,.07)');
+  svg.append('circle').attr('cx',cx).attr('cy',cy).attr('r',r+12).attr('fill','url(#atmo)');
+  svg.append('circle').attr('cx',cx).attr('cy',cy).attr('r',r).attr('fill','#0d1520');
+  const grat=svg.append('path').datum(d3.geoGraticule()()).attr('d',path).attr('fill','none').attr('stroke','#121f30').attr('stroke-width','.35');
+  const g=svg.append('g');
+  const paths=g.selectAll('path').data(geoData.features).join('path')
+    .attr('class',d=>countryClass(d)).attr('d',path)
+    .on('mouseover',(e,d)=>showTip(e,d)).on('mousemove',moveTip).on('mouseleave',hideTip)
+    .on('click',(e,d)=>{if(!drag)onCountryClick(d,paths)});
+  svg.append('circle').attr('cx',cx).attr('cy',cy).attr('r',r).attr('fill','none').attr('stroke','#1f3048').attr('stroke-width','1');
+  function redraw(){proj.rotate(rot);grat.attr('d',path);paths.attr('d',path);}
+  svg.on('mousedown',e=>{drag=false;startP=[e.clientX,e.clientY]})
+     .on('mousemove',e=>{if(!startP)return;const dx=e.clientX-startP[0],dy=e.clientY-startP[1];if(Math.abs(dx)+Math.abs(dy)>2)drag=true;rot[0]+=dx*.35;rot[1]-=dy*.35;startP=[e.clientX,e.clientY];redraw()})
+     .on('mouseup',()=>startP=null).on('mouseleave',()=>startP=null);
+  svg.on('touchstart',e=>{drag=false;const t=e.touches[0];startP=[t.clientX,t.clientY];e.preventDefault()},{passive:false})
+     .on('touchmove',e=>{if(!startP)return;const t=e.touches[0],dx=t.clientX-startP[0],dy=t.clientY-startP[1];if(Math.abs(dx)+Math.abs(dy)>2)drag=true;rot[0]+=dx*.35;rot[1]-=dy*.35;startP=[t.clientX,t.clientY];redraw();e.preventDefault()},{passive:false})
+     .on('touchend',()=>startP=null);
+}
+
+function onCountryClick(d,paths){
+  const k=KNOWN[+d.id];
+  if(!k)return;
+  if(selected.has(k.c))selected.delete(k.c);else selected.add(k.c);
+  paths.attr('class',dd=>countryClass(dd));
+  updateChips();
+}
+
+function showTip(e,d){
+  const k=KNOWN[+d.id];
+  const tt=document.getElementById('mapTooltip');
+  if(!k){tt.style.opacity='0';return;}
+  tt.innerHTML=`${k.f} <strong>${k.n}</strong>${selected.has(k.c)?' <span style="color:var(--accent)">✓ Selezionato</span>':''}`;
+  tt.style.opacity='1';
+}
+function moveTip(e){const tt=document.getElementById('mapTooltip');tt.style.left=(e.clientX+14)+'px';tt.style.top=(e.clientY-32)+'px';}
+function hideTip(){document.getElementById('mapTooltip').style.opacity='0';}
+
+function clearSelection(){selected.clear();updateChips();d3.selectAll('.country-path').classed('selected',false);}
+function selectAll(){
+  Object.values(KNOWN).forEach(k=>selected.add(k.c));
+  updateChips();
+  d3.selectAll('.country-path').each(function(d){if(KNOWN[+d.id])d3.select(this).classed('selected',true);});
+}
+
+function updateChips(){
+  const el=document.getElementById('chips');
+  const unique=[...new Map(Object.values(KNOWN).filter(k=>selected.has(k.c)).map(k=>[k.c,k])).values()];
+  if(!unique.length){el.innerHTML='<span class="no-sel">Nessun paese — clicca sulla mappa</span>';return;}
+  el.innerHTML=unique.map(k=>`<span class="chip" onclick="removeChip('${k.c}')"><span>${k.f}</span>${k.n} ×</span>`).join('');
+}
+function removeChip(code){
+  selected.delete(code);
+  updateChips();
+  d3.selectAll('.country-path').each(function(d){if(KNOWN[+d.id]?.c===code)d3.select(this).classed('selected',false);});
+}
+
+function buildFallback(){
+  const g=document.createElement('div');
+  g.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:5px;padding:12px;';
+  [...new Map(Object.values(KNOWN).map(k=>[k.c,k])).values()].forEach(k=>{
+    const b=document.createElement('button');
+    b.style.cssText='background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:7px;color:var(--text);font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s;';
+    b.innerHTML=`<span>${k.f}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.n}</span>`;
+    b.onclick=()=>{if(selected.has(k.c)){selected.delete(k.c);b.style.borderColor='var(--border)';b.style.color='var(--text)';}else{selected.add(k.c);b.style.borderColor='var(--accent)';b.style.color='var(--accent)';}updateChips();};
+    g.appendChild(b);
+  });
+  document.getElementById('mapContainer').appendChild(g);
+}
+
+// ─── TRENDING ───
+function buildTrending(){
+  document.getElementById('trendList').innerHTML=TRENDING.map((t,i)=>`
+    <div class="trend-item" onclick="setTopic('${t.t}')">
+      <span class="trend-num">${String(i+1).padStart(2,'0')}</span>
+      <span class="trend-text">${t.t}</span>
+      <span>${t.h}</span>
+    </div>`).join('');
+}
+function setTopic(text){document.getElementById('topicInput').value=text;analyzeOpinions();}
+
+// ─── ANALYZE ───
+async function analyzeOpinions(){
+  const topic=document.getElementById('topicInput').value.trim();
+  if(!topic){showToast('⚠️ Inserisci un argomento');return;}
+  if(!selected.size){showToast('⚠️ Seleziona almeno un paese dalla mappa');return;}
+  currentTopic=topic;
+  const btn=document.getElementById('analyzeBtn');
+  btn.disabled=true;btn.textContent='⏳ ANALISI...';
+  document.getElementById('resultsContent').innerHTML=`<div class="loading-wrap"><div class="ld"><span></span><span></span><span></span></div><div class="loading-text">L'IA sta aggregando le opinioni...</div></div>`;
+
+  const selArr=[...new Map(Object.values(KNOWN).filter(k=>selected.has(k.c)).map(k=>[k.c,k])).values()];
+  const isMulti=selArr.length>1;
+  const cInfo=selArr.map(k=>`${k.n} (${k.c})`).join(', ');
+  const sys=`Sei il motore analitico di VoxPopuli, piattaforma di opinione pubblica mondiale. Simula opinioni aggregate realisticamente e in modo bilanciato. Rispondi SOLO con JSON valido, nessun testo fuori, nessun markdown.`;
+
+  let prompt;
+  if(!isMulti){
+    const k=selArr[0];
+    prompt=`Analizza l'opinione pubblica su: "${topic}" — Paese: ${k.n}
+JSON: {"topic":"${topic}","mode":"single","country":"${k.n}","country_code":"${k.c}","flag":"${k.f}","summary":"2-3 frasi realistiche","total_responses":numero,"consensus_level":numero 0-100,"opinions":[{"text":"1-2 frasi","percentage":numero,"tags":["t"],"trend":"↑|↓|→","age_group":"fascia"}]}
+Max 5 opinioni. Percentuali sommano ~100. Bilanciato politicamente.`;
+  }else{
+    prompt=`Analizza l'opinione pubblica su: "${topic}" — Paesi: ${cInfo}
+JSON: {"topic":"${topic}","mode":"comparison","summary":"2 frasi","total_responses":numero,"global_opinions":[{"text":"...","percentage":numero,"tags":["t"],"trend":"↑|↓|→"}],"countries":[{"code":"XX","name":"...","flag":"🏴","top_opinion":"breve","opinions":[{"label":"breve","pct":numero}]}]}
+Max 5 opinioni globali. Oggetto per ogni paese. Percentuali sommano ~100 per gruppo.`;
+  }
+
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[{role:"user",content:prompt}]})});
+    const data=await res.json();
+    const text=data.content?.map(i=>i.text||'').join('')||'';
+    const parsed=JSON.parse(text.replace(/```json|```/g,'').trim());
+    renderResults(parsed);
+    document.getElementById('writePanel').style.display='block';
+  }catch(err){
+    document.getElementById('resultsContent').innerHTML=`<div class="empty-state"><div class="empty-globe">⚠️</div><div class="empty-title">Errore</div><div class="empty-desc">Impossibile contattare il motore IA. Riprova.</div></div>`;
+  }
+  btn.disabled=false;btn.textContent='⚡ ANALIZZA OPINIONI';
+}
+
+function renderResults(data){data.mode==='single'?renderSingle(data):renderComparison(data);}
+
+function renderSingle(data){
+  const ops=data.opinions||[],cons=data.consensus_level||50,top=ops[0];
+  document.getElementById('resultsContent').innerHTML=`
+    <div class="results-header">
+      <div>
+        <div class="results-topic">${data.flag||'🌍'} ${data.topic}</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-top:7px;line-height:1.55;max-width:560px">${data.summary}</div>
+      </div>
+      <div class="results-meta">
+        <span class="meta-badge">${data.country}</span>
+        <span class="meta-badge">${(data.total_responses||0).toLocaleString()} risposte</span>
+        <span class="ai-label"><span class="ai-dot"></span>IA</span>
+      </div>
+    </div>
+    <div class="consensus-wrap">
+      <div class="consensus-label"><span>Distribuzione opinioni</span><span style="color:${cons>60?'var(--green)':'var(--accent3)'}">${cons>70?'CONSENSO ALTO':cons>45?'OPINIONI DIVISE':'FORTE DIVISIONE'}</span></div>
+      <div class="ctrack">${ops.map((o,i)=>`<div class="cseg b${i%6}" style="width:${o.percentage}%"></div>`).join('')}</div>
+      <div class="clegend">${ops.map((o,i)=>`<div class="leg-item"><div class="leg-dot b${i%6}" style="background:${gc(i)}"></div><span>${o.percentage}%</span></div>`).join('')}</div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('t-op',this)">Opinioni</button>
+      <button class="tab" onclick="switchTab('t-ai',this)">Analisi IA</button>
+    </div>
+    <div id="t-op" class="tab-content active">
+      <div class="opinion-list">${ops.map((op,i)=>`
+        <div class="op-item">
+          <div class="op-top"><div class="op-text">${op.text}</div><div class="op-pct c${i%6}">${op.percentage}%</div></div>
+          <div class="bar-wrap"><div class="bar-fill b${i%6}" id="bar${i}" style="width:0%"></div></div>
+          <div class="op-foot">${(op.tags||[]).map(t=>`<span class="op-tag">#${t}</span>`).join('')}${op.trend?`<span class="op-tag" style="margin-left:auto;color:var(--accent2)">${op.trend}</span>`:''}${op.age_group?`<span class="op-tag">${op.age_group}</span>`:''}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div id="t-ai" class="tab-content">
+      <div style="padding:22px"><div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent2);padding:18px;border-radius:var(--radius)">
+        <div class="ai-label" style="margin-bottom:10px"><span class="ai-dot"></span>Analisi VoxPopuli</div>
+        <p style="font-size:13px;line-height:1.7;color:var(--text-muted)">${data.summary}</p>
+        <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="background:var(--surface);border:1px solid var(--border);padding:12px;border-radius:var(--radius)">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:.1em;margin-bottom:5px">OPINIONE DOMINANTE</div>
+            <div style="font-size:12px;color:var(--text)">${top?.percentage}% — ${top?.text?.substring(0,70)}...</div>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);padding:12px;border-radius:var(--radius)">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:.1em;margin-bottom:5px">LIVELLO CONSENSO</div>
+            <div style="font-size:22px;font-family:'Playfair Display',serif;font-weight:700;color:${cons>60?'var(--green)':'var(--accent3)'}">${cons}%</div>
+          </div>
+        </div>
+      </div></div>
+    </div>`;
+  setTimeout(()=>ops.forEach((op,i)=>{const b=document.getElementById('bar'+i);if(b)b.style.width=op.percentage+'%';}),80);
+}
+
+function renderComparison(data){
+  const global=data.global_opinions||[],countries=data.countries||[];
+  document.getElementById('resultsContent').innerHTML=`
+    <div class="results-header">
+      <div>
+        <div class="results-topic">🌐 ${data.topic} — Confronto Mondiale</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-top:7px;line-height:1.55;max-width:560px">${data.summary}</div>
+      </div>
+      <div class="results-meta">
+        <span class="meta-badge">${selected.size} paesi</span>
+        <span class="meta-badge">${(data.total_responses||0).toLocaleString()} risposte</span>
+        <span class="ai-label"><span class="ai-dot"></span>IA</span>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('t-g',this)">Tendenza Globale</button>
+      <button class="tab" onclick="switchTab('t-c',this)">Per Paese</button>
+    </div>
+    <div id="t-g" class="tab-content active">
+      <div class="opinion-list">${global.map((op,i)=>`
+        <div class="op-item">
+          <div class="op-top"><div class="op-text">${op.text}</div><div class="op-pct c${i%6}">${op.percentage}%</div></div>
+          <div class="bar-wrap"><div class="bar-fill b${i%6}" id="gb${i}" style="width:0%"></div></div>
+          <div class="op-foot">${(op.tags||[]).map(t=>`<span class="op-tag">#${t}</span>`).join('')}${op.trend?`<span class="op-tag" style="margin-left:auto;color:var(--accent2)">${op.trend}</span>`:''}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div id="t-c" class="tab-content">
+      <div class="ccomp">${countries.map(c=>`
+        <div class="ccard">
+          <div class="ccard-h"><span class="ccard-flag">${c.flag||'🌍'}</span><span class="ccard-name">${c.name}</span></div>
+          ${(c.opinions||[]).map((op,i)=>`<div class="ccrow"><span class="cclab">${op.label}</span><div class="cctrack"><div class="ccbar b${i%6}" id="cc_${c.code}_${i}" style="width:0%"></div></div><span class="ccpct c${i%6}">${op.pct}%</span></div>`).join('')}
+          ${c.top_opinion?`<div class="cctop">"${c.top_opinion}"</div>`:''}
+        </div>`).join('')}
+      </div>
+    </div>`;
+  setTimeout(()=>{
+    global.forEach((op,i)=>{const b=document.getElementById('gb'+i);if(b)b.style.width=op.percentage+'%';});
+    countries.forEach(c=>(c.opinions||[]).forEach((op,i)=>{const b=document.getElementById(`cc_${c.code}_${i}`);if(b)b.style.width=op.pct+'%';}));
+  },80);
+}
+
+function switchTab(id,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(id)?.classList.add('active');
+}
+
+async function submitOpinion(){
+  const opinion=document.getElementById('userOpinion').value.trim();
+  if(!opinion){showToast('⚠️ Scrivi la tua opinione prima di inviarla');return;}
+  const btn=document.getElementById('submitBtn');
+  btn.disabled=true;btn.textContent='⏳...';
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:`VoxPopuli. Opinione su "${currentTopic}": "${opinion}". SOLO JSON: {"message":"frase breve in italiano per l'utente che include la % di persone con opinione simile"}`}]})});
+    const data=await res.json();
+    const text=data.content?.map(i=>i.text||'').join('')||'';
+    const parsed=JSON.parse(text.replace(/```json|```/g,'').trim());
+    showToast('✓ '+parsed.message);
+    document.getElementById('userOpinion').value='';
+  }catch{showToast('✓ Opinione ricevuta e aggiunta al conteggio!');document.getElementById('userOpinion').value='';}
+  btn.disabled=false;btn.textContent='INVIA →';
+}
+
+function gc(i){return['var(--accent)','var(--accent2)','var(--accent3)','#a78bfa','#fb923c','#34d399'][i%6];}
+function showToast(msg){document.querySelector('.toast')?.remove();const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),4000);}
+
+window.addEventListener('resize',()=>{if(geoData)drawMap();});
+buildTrending();
+initMap();
+</script>
+</body>
+</html>
